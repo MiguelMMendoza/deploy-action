@@ -1,49 +1,79 @@
-name: "FTP Deploy"
-description: "Automate deploying websites and more with this GitHub action via FTP and FTPS"
-author: "Sam Kirkland"
-inputs:
-  server:
-    required: true
-    description: "ftp server"
-  username:
-    required: true
-    description: "ftp username"
-  password:
-    required: true
-    description: "ftp password"
-  port:
-    required: false
-    description: "Server port to connect to (read your web hosts docs)"
-  protocol:
-    required: false
-    description: "protocol to deploy with - ftp, ftps, or ftps-legacy"
-  local-dir:
-    required: false
-    description: "Folder to upload from, must end with trailing slash /"
-  server-dir:
-    required: false
-    description: "Path to upload to on the server. Must end with trailing slash /"
-  state-name:
-    required: false
-    description: "Path and name of the state file - this file is used to track which files have been deployed"
-  dry-run:
-    required: false
-    description: "Prints which modifications will be made with current config options, but doesnt actually make any changes"
-  dangerous-clean-slate:
-    required: false
-    description: "Deletes ALL contents of server-dir, even items in excluded with exclude argument"
-  exclude:
-    required: false
-    description: "An array of glob patterns, these files will not be included in the publish/delete process"
-  log-level:
-    required: false
-    description: "How verbose should the information be - minimal, standard, or verbose"
-  security:
-    required: false
-    description: "strict or loose"
-runs:
-  using: "node12"
-  main: "dist/index.js"
+name: "Node VPS Deployment"
+description: "Deploy a Node application to a VPS with SSH and PM2 installed and running"
 branding:
-  icon: "upload-cloud"
-  color: "orange"
+  icon: "arrow-up-circle"
+  color: "purple"
+
+inputs:
+  remote-path:
+    description: "Remote path where the files are going to be copied"
+    required: true
+  host:
+    description: "Remote host"
+    required: true
+  username:
+    description: "Username to login"
+    required: true
+  port:
+    description: "SSH port"
+    required: true
+    default: "22"
+  password:
+    description: "SSH password"
+    required: true
+  automatic-pre-deploy:
+    description: "Deploy automatically"
+    required: true
+    default: true
+  yarn:
+    description: "Do you want to use yarn?"
+    required: true
+    default: false
+  pm2-id:
+      description: "PM2 ID or Name of the process"
+      required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v1
+    
+    - name: Copy repository contents
+      uses: appleboy/scp-action@f57f59fba9f7f05a7857eeb06d556738cc696279
+      env:
+        HOST: ${{ inputs.host }}
+        USERNAME: ${{ inputs.username }}
+        PORT: ${{ inputs.port }}
+        PASSWORD: ${{ inputs.password }}
+      with:
+        source: "."
+        target: ${{ inputs.remote-path }}
+        
+    - name: Run npm clean-install
+      if: ${{ inputs.automatic-pre-deploy == true && inputs.yarn == false }}
+      uses: appleboy/ssh-action@1a8b3784eaa665f677fa114edd5683bb6a6bfaa8
+      with:
+        HOST: ${{ inputs.host }}
+        USERNAME: ${{ inputs.username }}
+        PORT: ${{ inputs.port }}
+        PASSWORD: ${{ inputs.password }}
+        script: cd ${{ inputs.remote-path }} && npm ci
+        
+    - name: Run yarn install
+      if: ${{ inputs.automatic-pre-deploy == true && inputs.yarn == true }}
+      uses: appleboy/ssh-action@1a8b3784eaa665f677fa114edd5683bb6a6bfaa8
+      with:
+        HOST: ${{ inputs.host }}
+        USERNAME: ${{ inputs.username }}
+        PORT: ${{ inputs.port }}
+        PASSWORD: ${{ inputs.password }}
+        script: cd ${{ inputs.remote-path }} && yarn install
+        
+    - name: Restart remote application
+      uses: appleboy/ssh-action@1a8b3784eaa665f677fa114edd5683bb6a6bfaa8
+      with:
+        HOST: ${{ inputs.host }}
+        USERNAME: ${{ inputs.username }}
+        PORT: ${{ inputs.port }}
+        PASSWORD: ${{ inputs.password }}
+        script: pm2 restart ${{ inputs.pm2-id }}
